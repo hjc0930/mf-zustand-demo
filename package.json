@@ -1,0 +1,18 @@
+{
+  "name": "mf-zustand-demo",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "pnpm --filter host --filter shop --parallel dev",
+    "build": "pnpm --filter host --filter shop build",
+    "typecheck": "pnpm -r typecheck",
+    "verify": "node scripts/verify.mjs",
+    "screenshot": "node scripts/screenshot.mjs",
+    "inspect": "node scripts/inspect-share.mjs",
+    "check:deps": "node scripts/check-core-deps.mjs"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}
