@@ -1,5 +1,7 @@
 # MF 2.0 + Zustand 全局状态共享 Demo（共享单例版）
 
+[![CI](https://github.com/hjc0930/mf-zustand-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/hjc0930/mf-zustand-demo/actions/workflows/ci.yml)
+
 一个最小可运行的 **Vite + pnpm monorepo** 示例，演示用 **共享单例 store** 做跨应用状态共享：
 
 - `@demo/shared-state` 在模块顶层导出一个 `appStore` 单例
