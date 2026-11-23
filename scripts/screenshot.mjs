@@ -70,6 +70,7 @@ async function main() {
     [
       '--headless=new',
       '--disable-gpu',
+      ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
       '--no-first-run',
       '--hide-scrollbars',
       `--remote-debugging-port=${DEBUG_PORT}`,

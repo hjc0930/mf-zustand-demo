@@ -153,6 +153,8 @@ async function main() {
     [
       '--headless=new',
       '--disable-gpu',
+      // GitHub Actions 的 Linux runner 里需要显式关掉沙箱
+      ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
       '--no-first-run',
       '--no-default-browser-check',
       '--disable-extensions',

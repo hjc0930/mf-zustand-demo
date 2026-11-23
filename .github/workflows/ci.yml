@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: true
+
+jobs:
+  quality:
+    name: 类型 / 版本 / 构建
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 与本地开发保持同一版本；lockfile 是 pnpm 12 生成的
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.18.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 类型检查
+        run: pnpm typecheck
+
+      # 核心依赖「声明版本 vs 实际安装版本」，漂移直接失败
+      - name: 核心依赖版本校验
+        run: pnpm check:deps
+
+      - name: 生产构建
+        run: pnpm build
+
+  e2e:
+    name: 无头浏览器验收
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.18.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 启动 dev server
+        run: |
+          pnpm dev > /tmp/dev.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:5173/ >/dev/null && curl -sf http://localhost:5174/ >/dev/null; then
+              echo "dev server ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "dev server 启动超时"
+          cat /tmp/dev.log
+          exit 1
+
+      # ubuntu runner 预装了 google-chrome，脚本会自动找到它
+      - name: 验收（真实点击 + 断言同一 store 实例）
+        run: pnpm verify
+
+      - name: 失败时输出 dev server 日志
+        if: failure()
+        run: cat /tmp/dev.log

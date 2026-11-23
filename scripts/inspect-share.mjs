@@ -95,6 +95,7 @@ const child = spawn(
   [
     '--headless=new',
     '--disable-gpu',
+    ...(process.platform === 'linux' ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
     '--no-first-run',
     `--remote-debugging-port=${PORT}`,
     '--remote-allow-origins=*',
