@@ -26,13 +26,22 @@ shop 独立运行（没有宿主，页面内同样只有一份单例，由共享
 .
 ├── apps
 │   ├── host                  # 宿主：写入初始状态、组合远程
-│   │   ├── src/main.tsx      # appStore.setState({ user }) —— 没有 Provider
-│   │   ├── src/App.tsx       # <RemoteCart /> —— 没有传 props
-│   │   └── vite.config.ts    # federation({ remotes: { shop } })
-│   └── shop                  # 远程：直接 import 单例
-│       ├── src/Cart.tsx      # 暴露 ./Cart，useAppStore(...) 直接读
-│       ├── src/standalone.tsx# 独立入口（命令行式写入游客态）
-│       └── vite.config.ts    # federation({ exposes: { './Cart' } })
+│   │   ├── public/mf-remotes.json   # 运行时的远程清单（改这里即可换地址）
+│   │   ├── src/mf/remote-registry.ts# registerRemotes + loadRemote
+│   │   ├── src/mf/types.ts          # 通用约定：默认导出的组件、不接收 props
+│   │   ├── src/main.tsx      # createBrowserRouter + RouterProvider（先取远程路由再建树）
+│   │   ├── src/App.tsx       # 布局：顶栏 + <Outlet/>
+│   │   ├── src/HomePanel.tsx # 首页
+│   │   ├── src/RemoteFallback.tsx # errorElement / 远程不可用兜底
+│   │   └── vite.config.ts    # federation({ shared }) —— 没有 remotes
+│   └── shop                  # 远程：暴露路由表
+│       ├── src/routes.tsx    # 暴露 ./routes（RouteObject[]，全相对路径）
+│       ├── src/Layout.tsx    # 导航 + <Outlet/>
+│       ├── src/Cart.tsx      # index 路由
+│       ├── src/Orders.tsx    # orders
+│       ├── src/OrderDetail.tsx # orders/:id
+│       ├── src/standalone.tsx# 独立入口（createBrowserRouter(routes)）
+│       └── vite.config.ts    # federation({ exposes: { './routes' } })
 └── packages
     └── shared-state          # 状态 + 共享配置，以源码形式被消费
         ├── package.json      # exports：. / ./factory / ./mf-config
@@ -92,6 +101,81 @@ pnpm dev              # 并行启动 host:5173 / shop:5174
 __HOST_STORE__.getState()   // 宿主与远程共用这一份
 ```
 
+## 远程加载方式（运行时）
+
+宿主**构建期不声明 remotes**（`vite.config` 里没有这个字段），远程地址由运行时清单决定：
+
+```json
+// apps/host/public/mf-remotes.json
+[{ "name": "shop", "entry": "http://localhost:5174/remoteEntry.js", "type": "module" }]
+```
+
+```ts
+// apps/host/src/mf/remote-registry.ts
+registerRemotes(list, { force: true });   // 必须发生在首次加载之前
+loadRemote('shop/Cart');
+```
+
+```tsx
+// apps/host/src/App.tsx
+const RemoteCart = lazy(() => loadExposed<ShopCartModule>('shop', 'Cart'));
+```
+
+| 项 | 说明 |
+|---|---|
+| 改地址 | 改 `mf-remotes.json` 即可，宿主不用重新构建 |
+| 兜底 | 清单请求失败时回退到内置地址，避免整块白屏 |
+| 类型 | 没有自动 DTS，只用一条通用约定 `RemoteModule`（宿主不向远程传参，所以不需要逐远程契约） |
+| 静态 import | 不可用，只能 `loadRemote('shop/Cart')` |
+| 调试 | 控制台执行 `__MF_REMOTES__`，可看到清单来源（`remote-config` / `fallback`）与内容 |
+
+> `shared` 仍然在构建期配置（`@demo/shared-state/mf-config`）——这是它与“纯运行时”方案的本质区别。
+
+## 路由（代码式：远程暴露路由表）
+
+宿主用 `createBrowserRouter` 构建路由树；远程暴露的不是组件，而是 `RouteObject[]`：
+
+```tsx
+// apps/shop/src/routes.tsx —— 没有 Router、没有 <Routes>
+export const routes: RouteObject[] = [
+  {
+    element: <ShopLayout />,              // 导航 + <Outlet />
+    children: [
+      { index: true, element: <Cart /> },
+      { path: 'orders', element: <Orders /> },
+      { path: 'orders/:id', element: <OrderDetail /> },
+    ],
+  },
+];
+```
+
+```tsx
+// apps/host/src/main.tsx —— 先取路由表，再一次性建树
+const mod = await loadExposed<RemoteRoutesModule>('shop', 'routes');
+
+const router = createBrowserRouter([
+  {
+    path: '/',
+    element: <AppLayout />,
+    children: [
+      { index: true, element: <HomePanel /> },
+      { path: 'shop', children: mod.routes },   // ← 合并远程路由
+    ],
+  },
+]);
+
+createRoot(el).render(<RouterProvider router={router} />);
+```
+
+| 收益 | 代价 |
+|---|---|
+| 宿主拿到**全量路由数据**，可做权限过滤、面包屑、路由级预取、埋点 | 启动变成异步：要先加载远程路由，才能渲染第一帧 |
+| 能用 data router 的 `errorElement` / `loader` | 远程不能自带 Router，独立运行时要 `createBrowserRouter(routes)` |
+| 路由结构可被静态分析、可被测试断言 | 契约从 `ComponentType` 变成 `RouteObject[]`，两端都要跟 react-router 版本 |
+
+> 子路由仍然全用相对路径（`orders`、`orders/:id`），所以不需要 basename、不需要 props，
+> `/shop/orders/42` 这种深链刷新也能直接命中。
+
 ## 共享单例是怎么实现的
 
 > 想看更完整的原理拆解（模块缓存 → 构建期改写 → 运行时注册表 → 边界与失效场景），
@@ -118,6 +202,8 @@ import type { ModuleFederationOptions } from '@module-federation/vite';
 export const CORE_DEPENDENCIES = {
   react: '19.3.1',
   'react-dom': '19.3.1',
+  'react-router': '7.18.6',
+  'react-router-dom': '7.18.6',
   zustand: '5.1.0',
   '@demo/shared-state': '1.0.0',
 } as const;
@@ -236,10 +322,12 @@ pnpm screenshot       # 重新生成 README 用的两张截图
 排查“到底是同一个实例还是各有一份”时最直接。正常情况应该看到
 `@demo/shared-state` 只有一条 `1.0.0` 记录，且 `singleton: true`。
 
-`pnpm verify` 会启动无头 Chrome，真实点击按钮并断言 17 项，包括：
+`pnpm verify` 会启动无头 Chrome，真实点击按钮并断言 22 项，包括：
 
 - 宿主与远程显示的 **storeId 完全一致**（同一个实例）
+- **远程清单来源是 `remote-config`**，不是兜底地址
 - 远程点击 → 宿主计数同步；宿主切换主题/用户 → 远程同步
+- **远程子路由 `/shop/orders`、动态路由 `/shop/orders/1001`、深链刷新 `/shop/orders/42`**
 - 远程独立运行时使用自己的游客态
 
 ## 常见坑

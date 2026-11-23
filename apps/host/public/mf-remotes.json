@@ -1,0 +1,7 @@
+[
+  {
+    "name": "shop",
+    "entry": "http://localhost:5174/remoteEntry.js",
+    "type": "module"
+  }
+]

@@ -24,6 +24,8 @@ import type { ModuleFederationOptions } from '@module-federation/vite';
 export const CORE_DEPENDENCIES = {
   react: '19.3.1',
   'react-dom': '19.3.1',
+  'react-router': '7.18.6',
+  'react-router-dom': '7.18.6',
   zustand: '5.1.0',
   '@demo/shared-state': '1.0.0',
 } as const;
@@ -63,6 +65,10 @@ export const sharedConfig: SharedMap = {
   'react/': core('react'),
   'react-dom': core('react-dom'),
   'react-dom/': core('react-dom'),
+
+  // 路由：远程的 <Routes> 必须和宿主用同一个 router 实例，否则读不到 location
+  'react-router': core('react-router'),
+  'react-router-dom': core('react-router-dom'),
 
   // 状态库：保证 createStore / useStore 来自同一份实现
   zustand: core('zustand'),

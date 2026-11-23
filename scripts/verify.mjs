@@ -187,7 +187,7 @@ async function main() {
     const cdp = new Cdp(ws);
     await cdp.send('Page.enable');
     await cdp.send('Runtime.enable');
-    await cdp.send('Page.navigate', { url: HOST_URL });
+    await cdp.send('Page.navigate', { url: `${HOST_URL}shop` });
 
     await cdp.waitForElement('[data-testid="remote-cart"]', 40000);
     await sleep(400);
@@ -202,6 +202,17 @@ async function main() {
     const hostStoreId = await cdp.text('[data-testid="host-store-id"]');
     const cartStoreId = await cdp.text('[data-testid="cart-store-id"]');
     check('宿主与远程是同一个实例', hostStoreId, cartStoreId);
+
+    // C1：远程清单来自运行时配置，而不是构建期写死（也不能走兜底）
+    const remotes = await cdp.evaluate(
+      'window.__MF_REMOTES__ ? JSON.parse(JSON.stringify(window.__MF_REMOTES__)) : null',
+    );
+    check('远程清单来源', remotes?.source, 'remote-config');
+    check(
+      '清单里注册了 shop',
+      Array.isArray(remotes?.list) && remotes.list.some((r) => r.name === 'shop'),
+      true,
+    );
 
     // ---------- 2. 远程写 → 宿主读 ----------
     await cdp.click('[data-testid="cart-add"]');
@@ -232,6 +243,20 @@ async function main() {
 
     const hasRuntime = await cdp.evaluate('typeof window.__FEDERATION__ !== "undefined"');
     check('MF 运行时已加载', hasRuntime, true);
+
+    // ---------- 5.5 路由：宿主集中（/shop/*）+ 远程相对路由 ----------
+    await cdp.click('[data-testid="shop-nav-orders"]');
+    await cdp.waitForElement('[data-testid="orders-page"]', 15000);
+    checkContains('远程子路由 /shop/orders', await cdp.text('[data-testid="orders-page"]'), '订单列表');
+
+    await cdp.click('[data-testid="order-link-1001"]');
+    await cdp.waitForElement('[data-testid="order-detail"]', 15000);
+    checkContains('远程动态路由 /shop/orders/1001', await cdp.text('[data-testid="order-detail"]'), '#1001');
+
+    // 深链：直接访问 /shop/orders/42 并刷新，宿主一级 + 远程二级都要能对上
+    await cdp.send('Page.navigate', { url: `${HOST_URL}shop/orders/42` });
+    await cdp.waitForElement('[data-testid="order-detail"]', 25000);
+    checkContains('深链刷新后渲染详情', await cdp.text('[data-testid="order-detail"]'), '#42');
 
     // ---------- 6. 远程独立运行：页面内同样是一份单例 ----------
     await cdp.send('Page.navigate', { url: SHOP_URL });

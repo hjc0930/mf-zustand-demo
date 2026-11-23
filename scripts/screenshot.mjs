@@ -112,7 +112,7 @@ async function main() {
     });
 
     for (const [url, file] of [
-      ['http://localhost:5173/', 'host.png'],
+      ['http://localhost:5173/shop', 'host.png'],
       ['http://localhost:5174/', 'shop.png'],
     ]) {
       await cdp.send('Page.navigate', { url });

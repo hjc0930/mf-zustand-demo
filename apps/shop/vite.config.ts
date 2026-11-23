@@ -13,7 +13,8 @@ export default defineConfig({
       filename: 'remoteEntry.js',
       manifest: true,
       exposes: {
-        './Cart': './src/Cart.tsx',
+        // 暴露路由表（代码式路由：宿主把它挂到自己的路由树上）
+        './routes': './src/routes.tsx',
       },
       // 与 host 完全一致：同一个包导出的同一个对象
       shared: sharedConfig,
